@@ -1,6 +1,170 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <title>SaaS Box Viewer - 156430</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; font-family: sans-serif; color: white; display: flex; }
+        #sidebar { width: 320px; background: #222; padding: 25px; height: 100vh; border-right: 1px solid #444; overflow-y: auto; }
+        #viewer { flex: 1; height: 100vh; }
+        .status { padding: 10px; border-radius: 4px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; }
+        .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
+        .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
+        label { display: block; font-size: 11px; color: #888; margin-bottom: 5px; margin-top: 15px; }
+        input, select { width: 100%; padding: 10px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; }
+        .debug { background: #000; padding: 15px; margin-top: 20px; font-family: monospace; font-size: 12px; color: #3498db; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div id="status" class="status offline">OFFLINE: CONNECTING...</div>
+    
+    <label>Template Model</label>
+    <select id="modelSelector">
+        <option value="156430">156430 - Flip Top Mailer</option>
+    </select>
+
+    <label>Dimensions (L, W, H)</label>
+    <div style="display:flex; gap:5px;">
+        <input type="number" id="L" value="120">
+        <input type="number" id="W" value="60">
+        <input type="number" id="H" value="160">
+    </div>
+
+    <label>Lid Rotation (Open/Close)</label>
+    <input type="range" id="Fold" min="0" max="150" value="90">
+
+    <div class="debug" id="debug">Awaiting data...</div>
+</div>
+
+<div id="viewer"></div>
+
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
+    
+    let library = { "156430": { lidA: "W+1", tuckB: "20" } };
+
+    // --- 3D SCENE ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth - 320, window.innerHeight);
+    document.getElementById('viewer').appendChild(renderer.domElement);
+    
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(100, 200, 100);
+    scene.add(sun);
+    camera.position.set(250, 250, 400);
+    camera.lookAt(0, 0, 0);
+
+    const boxGroup = new THREE.Group();
+    scene.add(boxGroup);
+
+    async function syncData() {
+        try {
+            // Proxy to handle CORS on GitHub
+            const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(SHEET_URL);
+            const res = await fetch(proxy);
+            const json = await res.json();
+            const csvData = json.contents;
+            
+            const rows = csvData.split('\n').map(r => r.split(',').map(cell => cell.trim()));
+            
+            rows.forEach((row, i) => {
+                if(i > 0 && row[0]) {
+                    library[row[0]] = { lidA: row[6], tuckB: row[7] };
+                }
+            });
+            document.getElementById('status').className = "status online";
+            document.getElementById('status').innerText = "ONLINE: SHEET SYNCED";
+        } catch (e) {
+            console.warn("Using default library due to connection issue.");
+        }
+        updateBox();
+    }
+
+    function updateBox() {
+        boxGroup.clear();
+        const id = document.getElementById('modelSelector').value;
+        const L = parseFloat(document.getElementById('L').value);
+        const W = parseFloat(document.getElementById('W').value);
+        const H = parseFloat(document.getElementById('H').value);
+        const fold = (document.getElementById('Fold').value * Math.PI) / 180;
+
+        const rules = library[id] || library["156430"];
+        const solve = (f) => {
+            try { return eval(f.replace(/W/g, W).replace(/L/g, L).replace(/H/g, H).replace(/=/g, '')); }
+            catch { return 0; }
+        };
+
+        const A = solve(rules.lidA);
+        const B = solve(rules.tuckB);
+        document.getElementById('debug').innerHTML = `Lid(A): ${A.toFixed(1)}mm<br>Tuck(B): ${B.toFixed(1)}mm`;
+
+        const mat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, side: THREE.DoubleSide });
+
+        // 1. MAIN BODY PANELS
+        const front = new THREE.Mesh(new THREE.BoxGeometry(L, H, 0.5), mat);
+        boxGroup.add(front);
+
+        const back = new THREE.Mesh(new THREE.BoxGeometry(L, H, 0.5), mat);
+        back.position.z = -W;
+        boxGroup.add(back);
+
+        const left = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, W), mat);
+        left.position.set(-L/2, 0, -W/2);
+        boxGroup.add(left);
+
+        const right = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, W), mat);
+        right.position.set(L/2, 0, -W/2);
+        boxGroup.add(right);
+
+        const bottom = new THREE.Mesh(new THREE.BoxGeometry(L, 0.5, W), mat);
+        bottom.position.set(0, -H/2, -W/2);
+        boxGroup.add(bottom);
+
+        // 2. HINGED LID
+        const lidPivot = new THREE.Group();
+        lidPivot.position.set(0, H/2, -W); // Attach to top of back panel
+        boxGroup.add(lidPivot);
+
+        const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(L, A, 0.5), mat);
+        lidMesh.position.y = A/2;
+        lidPivot.add(lidMesh);
+        lidPivot.rotation.x = fold; // Opening angle
+
+        // 3. TUCK FLAP
+        const tuckPivot = new THREE.Group();
+        tuckPivot.position.y = A;
+        lidMesh.add(tuckPivot);
+
+        const tuckMesh = new THREE.Mesh(new THREE.BoxGeometry(L, B, 0.5), mat);
+        tuckMesh.position.y = B/2;
+        tuckPivot.add(tuckMesh);
+        tuckPivot.rotation.x = Math.PI / 2; // Fixed 90 deg fold for tuck
+    }
+
+    document.querySelectorAll('input, select').forEach(el => el.oninput = updateBox);
+    syncData();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        boxGroup.rotation.y += 0.005;
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html><!DOCTYPE html>
+<html>
+<head>
     <title>Pacdora-Style Viewer (GitHub Edition)</title>
     <style>
         body { margin: 0; background: #1a1a1a; font-family: sans-serif; color: white; display: flex; }
