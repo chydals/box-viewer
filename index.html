@@ -1,178 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Box Viewer Pro - 156430</title>
-    <style>
-        body { margin: 0; background: #111; font-family: 'Segoe UI', sans-serif; color: white; display: flex; overflow: hidden; }
-        #sidebar { width: 320px; background: #1a1a1a; padding: 25px; height: 100vh; border-right: 1px solid #333; z-index: 10; overflow-y: auto; }
-        #viewer { flex: 1; height: 100vh; }
-        .status { padding: 12px; border-radius: 6px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; }
-        .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
-        .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
-        label { display: block; font-size: 11px; color: #888; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
-        input, select { width: 100%; padding: 12px; background: #222; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
-        .debug-panel { background: #000; padding: 15px; margin-top: 25px; border-radius: 5px; border: 1px solid #333; }
-        .calc-line { display: flex; justify-content: space-between; font-family: monospace; font-size: 13px; margin-bottom: 5px; }
-        .val { color: #3498db; }
-    </style>
-</head>
-<body>
-
-<div id="sidebar">
-    <div id="status" class="status offline">OFFLINE: CONNECTING...</div>
-    
-    <label>Model Selector</label>
-    <select id="modelSelector">
-        <option value="156430">156430 - Flip Top Mailer</option>
-        <option value="150010">150010 - Crash Lock</option>
-    </select>
-
-    <label>Internal Size (mm)</label>
-    <div style="display:flex; gap:8px;">
-        <input type="number" id="L" value="120" placeholder="L">
-        <input type="number" id="W" value="60" placeholder="W">
-        <input type="number" id="H" value="160" placeholder="H">
-    </div>
-
-    <label>Fold Control</label>
-    <input type="range" id="Fold" min="0" max="150" value="90">
-
-    <div class="debug-panel">
-        <div class="calc-line">Lid (A): <span id="valA" class="val">--</span></div>
-        <div class="calc-line">Tuck (B): <span id="valB" class="val">--</span></div>
-    </div>
-</div>
-
-<div id="viewer"></div>
-
-<script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
-    
-    let library = { "156430": { lidA: "W+1", tuckB: "20" } };
-
-    // --- 3D ENGINE ---
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    document.getElementById('viewer').appendChild(renderer.domElement);
-    
-    scene.add(new THREE.AmbientLight(0xffffff, 1));
-    camera.position.set(300, 300, 400);
-    camera.lookAt(0, 0, 0);
-
-    const boxGroup = new THREE.Group();
-    scene.add(boxGroup);
-
-    async function initData() {
-        try {
-            // Using a timestamp to bypass GitHub/Google caching
-            const response = await fetch(`${SHEET_URL}&t=${Date.now()}`);
-            const csv = await response.text();
-            const rows = csv.split('\n').map(r => r.split(',').map(c => c.trim()));
-            
-            rows.forEach((row, i) => {
-                if(i > 0 && row[0]) {
-                    library[row[0]] = { lidA: row[5], tuckB: row[6] };
-                }
-            });
-            document.getElementById('status').className = "status online";
-            document.getElementById('status').innerText = "ONLINE: SYNCED";
-        } catch (e) {
-            console.error(e);
-        }
-        update3D();
-    }
-
-    function update3D() {
-        boxGroup.clear();
-        const L = parseFloat(document.getElementById('L').value) || 1;
-        const W = parseFloat(document.getElementById('W').value) || 1;
-        const H = parseFloat(document.getElementById('H').value) || 1;
-        const fold = (document.getElementById('Fold').value * Math.PI) / 180;
-
-        const data = library[document.getElementById('modelSelector').value] || library["156430"];
-        const solve = (f) => eval(f.replace(/W/g, W).replace(/L/g, L).replace(/H/g, H).replace(/=/g, ''));
-        
-        const A = solve(data.lidA);
-        const B = solve(data.tuckB);
-
-        document.getElementById('valA').innerText = A.toFixed(1) + 'mm';
-        document.getElementById('valB').innerText = B.toFixed(1) + 'mm';
-
-        const mat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, side: THREE.DoubleSide });
-
-        // MAIN BODY
-        const front = new THREE.Mesh(new THREE.BoxGeometry(L, H, 1), mat);
-        boxGroup.add(front);
-
-        const back = new THREE.Mesh(new THREE.BoxGeometry(L, H, 1), mat);
-        back.position.z = -W;
-        boxGroup.add(back);
-
-        const sideL = new THREE.Mesh(new THREE.BoxGeometry(1, H, W), mat);
-        sideL.position.set(-L/2, 0, -W/2);
-        boxGroup.add(sideL);
-
-        const sideR = new THREE.Mesh(new THREE.BoxGeometry(1, H, W), mat);
-        sideR.position.set(L/2, 0, -W/2);
-        boxGroup.add(sideR);
-
-        const bottom = new THREE.Mesh(new THREE.BoxGeometry(L, 1, W), mat);
-        bottom.position.set(0, -H/2, -W/2);
-        boxGroup.add(bottom);
-
-        // HINGED LID (Connected to Back Panel)
-        const lidPivot = new THREE.Group();
-        lidPivot.position.set(0, H/2, -W); // Exact top-back edge
-        boxGroup.add(lidPivot);
-
-        const lid = new THREE.Mesh(new THREE.BoxGeometry(L, A, 1), mat);
-        lid.position.y = A/2; // Center the mesh on the pivot
-        lidPivot.add(lid);
-        lidPivot.rotation.x = fold;
-
-        // TUCK FLAP (Connected to Lid)
-        const tuckPivot = new THREE.Group();
-        tuckPivot.position.y = A; 
-        lid.add(tuckPivot);
-
-        const tuck = new THREE.Mesh(new THREE.BoxGeometry(L, B, 1), mat);
-        tuck.position.y = B/2;
-        tuckPivot.add(tuck);
-        tuckPivot.rotation.x = Math.PI / 2; // Fixed fold
-
-        renderer.render(scene, camera);
-    }
-
-    document.querySelectorAll('input, select').forEach(i => i.oninput = updateBox);
-    function updateBox() { update3D(); }
-    
-    initData();
-
-    function animate() {
-        requestAnimationFrame(animate);
-        boxGroup.rotation.y += 0.005;
-        renderer.render(scene, camera);
-    }
-    animate();
-</script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-    <title>SaaS Box Viewer - Pro Sync</title>
+    <title>SaaS Box Viewer - Clean Version</title>
     <style>
         body { margin: 0; background: #1a1a1a; font-family: 'Segoe UI', sans-serif; color: white; display: flex; overflow: hidden; }
-        #sidebar { width: 320px; background: #252525; padding: 25px; height: 100vh; border-right: 1px solid #444; box-shadow: 5px 0 15px rgba(0,0,0,0.5); z-index: 10; overflow-y: auto; }
+        #sidebar { width: 320px; background: #252525; padding: 25px; height: 100vh; border-right: 1px solid #444; z-index: 10; overflow-y: auto; }
         #viewer { flex: 1; height: 100vh; position: relative; }
-        .status { padding: 12px; border-radius: 6px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; letter-spacing: 1px; }
+        .status { padding: 12px; border-radius: 6px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; }
         .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
         .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
         label { display: block; font-size: 11px; color: #888; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
@@ -185,7 +19,7 @@
 <body>
 
 <div id="sidebar">
-    <div id="status" class="status offline">SYNCING WITH GOOGLE...</div>
+    <div id="status" class="status offline">SYNCING...</div>
     
     <label>Box Model</label>
     <select id="modelSelector">
@@ -195,206 +29,19 @@
 
     <label>Inner Dimensions (mm)</label>
     <div style="display:flex; gap:8px;">
-        <input type="number" id="L" value="120" title="Length">
-        <input type="number" id="W" value="60" title="Width">
-        <input type="number" id="H" value="160" title="Height">
-    </div>
-
-    <label>3D Fold View</label>
-    <input type="range" id="Fold" min="0" max="140" value="90">
-
-    <div class="debug-panel">
-        <label style="margin-top:0">Live Calculations</label>
-        <div class="calc-line">Lid (A): <span id="valA" class="val">--</span></div>
-        <div class="calc-line">Tuck (B): <span id="valB" class="val">--</span></div>
-        <div class="calc-line">Dust (G): <span id="valG" class="val">--</span></div>
-    </div>
-</div>
-
-<div id="viewer"></div>
-
-<script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-
-    // The link from your screenshot
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
-    
-    let library = { 
-        "156430": { lidA: "W+1", tuckB: "20", dustG: "W/2-1" },
-        "150010": { lidA: "W-0.5", tuckB: "W/3", dustG: "W/2-0.36" }
-    };
-
-    // --- 3D SCENE SETUP ---
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    renderer.setClearColor(0x1a1a1a);
-    document.getElementById('viewer').appendChild(renderer.domElement);
-    
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const pointLight = new THREE.PointLight(0xffffff, 1);
-    pointLight.position.set(200, 500, 300);
-    scene.add(pointLight);
-
-    camera.position.set(300, 300, 500);
-    camera.lookAt(0, 0, 0);
-
-    const boxGroup = new THREE.Group();
-    scene.add(boxGroup);
-
-    async function fetchSheetData() {
-        try {
-            // Use fetch with a cache-buster to ensure we get the latest Google data
-            const response = await fetch(`${SHEET_URL}&cache=${Date.now()}`);
-            const text = await response.text();
-            const rows = text.split('\n').map(r => r.split(',').map(c => c.trim()));
-            
-            rows.forEach((row, i) => {
-                // Column A=ID, F=LidA, G=TuckB, H=DustG based on your screenshot
-                if(i > 0 && row[0]) {
-                    library[row[0]] = {
-                        lidA: row[5], 
-                        tuckB: row[6],
-                        dustG: row[7]
-                    };
-                }
-            });
-            document.getElementById('status').className = "status online";
-            document.getElementById('status').innerText = "ONLINE: GOOGLE SHEET SYNCED";
-        } catch (e) {
-            console.error("Sync Error:", e);
-            document.getElementById('status').innerText = "OFFLINE: USING LOCAL CACHE";
-        }
-        update3D();
-    }
-
-    function update3D() {
-        boxGroup.clear();
-        const id = document.getElementById('modelSelector').value;
-        const L = parseFloat(document.getElementById('L').value) || 1;
-        const W = parseFloat(document.getElementById('W').value) || 1;
-        const H = parseFloat(document.getElementById('H').value) || 1;
-        const foldRad = (document.getElementById('Fold').value * Math.PI) / 180;
-
-        const data = library[id] || library["156430"];
-        
-        // Formula Solver
-        const solve = (f) => {
-            if(!f) return 0;
-            try { return eval(f.toString().replace(/W/g, W).replace(/L/g, L).replace(/H/g, H).replace(/=/g, '')); }
-            catch { return 0; }
-        };
-
-        const A = solve(data.lidA);
-        const B = solve(data.tuckB);
-        const G = solve(data.dustG);
-
-        // Update UI
-        document.getElementById('valA').innerText = A.toFixed(1) + 'mm';
-        document.getElementById('valB').innerText = B.toFixed(1) + 'mm';
-        document.getElementById('valG').innerText = G.toFixed(1) + 'mm';
-
-        const mat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, side: THREE.DoubleSide });
-
-        // 1. MAIN BOX BODY
-        const bodyParts = [
-            { g: [L, H, 1], p: [0, 0, 0] },          // Front
-            { g: [L, H, 1], p: [0, 0, -W] },         // Back
-            { g: [1, H, W], p: [-L/2, 0, -W/2] },    // Left Wall
-            { g: [1, H, W], p: [L/2, 0, -W/2] },     // Right Wall
-            { g: [L, 1, W], p: [0, -H/2, -W/2] }     // Bottom
-        ];
-
-        bodyParts.forEach(part => {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(...part.g), mat);
-            mesh.position.set(...part.p);
-            boxGroup.add(mesh);
-        });
-
-        // 2. HINGED LID (Opens from the BACK panel)
-        const lidPivot = new THREE.Group();
-        lidPivot.position.set(0, H/2, -W);
-        boxGroup.add(lidPivot);
-
-        const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(L, A, 1), mat);
-        lidMesh.position.y = A/2;
-        lidPivot.add(lidMesh);
-        lidPivot.rotation.x = foldRad;
-
-        // 3. TUCK FLAP (Hinged to the Lid)
-        const tuckPivot = new THREE.Group();
-        tuckPivot.position.y = A;
-        lidMesh.add(tuckPivot);
-
-        const tuckMesh = new THREE.Mesh(new THREE.BoxGeometry(L, B, 1), mat);
-        tuckMesh.position.y = B/2;
-        tuckPivot.add(tuckMesh);
-        tuckPivot.rotation.x = Math.PI / 2; // Always 90 degrees to the lid
-
-        renderer.render(scene, camera);
-    }
-
-    // Animation loop for smooth rotation
-    function animate() {
-        requestAnimationFrame(animate);
-        boxGroup.rotation.y += 0.003;
-        renderer.render(scene, camera);
-    }
-
-    document.querySelectorAll('input, select').forEach(el => el.oninput = update3D);
-    fetchSheetData();
-    animate();
-
-    // Handle Window Resize
-    window.addEventListener('resize', () => {
-        camera.aspect = (window.innerWidth - 320) / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    });
-</script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-    <title>SaaS Box Viewer - 156430</title>
-    <style>
-        body { margin: 0; background: #1a1a1a; font-family: sans-serif; color: white; display: flex; }
-        #sidebar { width: 320px; background: #222; padding: 25px; height: 100vh; border-right: 1px solid #444; overflow-y: auto; }
-        #viewer { flex: 1; height: 100vh; }
-        .status { padding: 10px; border-radius: 4px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; }
-        .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
-        .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
-        label { display: block; font-size: 11px; color: #888; margin-bottom: 5px; margin-top: 15px; }
-        input, select { width: 100%; padding: 10px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; }
-        .debug { background: #000; padding: 15px; margin-top: 20px; font-family: monospace; font-size: 12px; color: #3498db; border-radius: 4px; }
-    </style>
-</head>
-<body>
-
-<div id="sidebar">
-    <div id="status" class="status offline">OFFLINE: CONNECTING...</div>
-    
-    <label>Template Model</label>
-    <select id="modelSelector">
-        <option value="156430">156430 - Flip Top Mailer</option>
-    </select>
-
-    <label>Dimensions (L, W, H)</label>
-    <div style="display:flex; gap:5px;">
         <input type="number" id="L" value="120">
         <input type="number" id="W" value="60">
         <input type="number" id="H" value="160">
     </div>
 
-    <label>Lid Rotation (Open/Close)</label>
-    <input type="range" id="Fold" min="0" max="150" value="90">
+    <label>Fold View</label>
+    <input type="range" id="Fold" min="0" max="140" value="90">
 
-    <div class="debug" id="debug">Awaiting data...</div>
+    <div class="debug-panel">
+        <label style="margin-top:0; color:#555">Live Logic</label>
+        <div class="calc-line">Lid (A): <span id="valA" class="val">--</span></div>
+        <div class="calc-line">Tuck (B): <span id="valB" class="val">--</span></div>
+    </div>
 </div>
 
 <div id="viewer"></div>
@@ -408,54 +55,54 @@
 
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
     
-    let library = { "156430": { lidA: "W+1", tuckB: "20" } };
+    let library = { 
+        "156430": { lidA: "W+1", tuckB: "20" },
+        "150010": { lidA: "W-0.5", tuckB: "W/3" }
+    };
 
-    // --- 3D SCENE ---
+    // --- 3D SETUP ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth - 320, window.innerHeight);
     document.getElementById('viewer').appendChild(renderer.domElement);
     
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(100, 200, 100);
-    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
     camera.position.set(250, 250, 400);
     camera.lookAt(0, 0, 0);
 
     const boxGroup = new THREE.Group();
     scene.add(boxGroup);
 
+    // --- DATA LOADING ---
     async function syncData() {
         try {
-            // Proxy to handle CORS on GitHub
-            const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(SHEET_URL);
-            const res = await fetch(proxy);
-            const json = await res.json();
-            const csvData = json.contents;
-            
-            const rows = csvData.split('\n').map(r => r.split(',').map(cell => cell.trim()));
+            const response = await fetch(`${SHEET_URL}&cb=${Date.now()}`);
+            const text = await response.text();
+            const rows = text.split('\n').map(r => r.split(',').map(c => c.trim()));
             
             rows.forEach((row, i) => {
                 if(i > 0 && row[0]) {
-                    library[row[0]] = { lidA: row[6], tuckB: row[7] };
+                    library[row[0]] = { lidA: row[5], tuckB: row[6] };
                 }
             });
             document.getElementById('status').className = "status online";
-            document.getElementById('status').innerText = "ONLINE: SHEET SYNCED";
+            document.getElementById('status').innerText = "ONLINE: SYNCED";
         } catch (e) {
-            console.warn("Using default library due to connection issue.");
+            document.getElementById('status').innerText = "OFFLINE: CACHE ONLY";
         }
-        updateBox();
+        update3D();
     }
 
-    function updateBox() {
+    // --- RENDERING LOGIC ---
+    function update3D() {
+        // CRITICAL: Clear the scene before redrawing to prevent repeating panels
         boxGroup.clear();
+
         const id = document.getElementById('modelSelector').value;
-        const L = parseFloat(document.getElementById('L').value);
-        const W = parseFloat(document.getElementById('W').value);
-        const H = parseFloat(document.getElementById('H').value);
+        const L = parseFloat(document.getElementById('L').value) || 1;
+        const W = parseFloat(document.getElementById('W').value) || 1;
+        const H = parseFloat(document.getElementById('H').value) || 1;
         const fold = (document.getElementById('Fold').value * Math.PI) / 180;
 
         const rules = library[id] || library["156430"];
@@ -466,52 +113,52 @@
 
         const A = solve(rules.lidA);
         const B = solve(rules.tuckB);
-        document.getElementById('debug').innerHTML = `Lid(A): ${A.toFixed(1)}mm<br>Tuck(B): ${B.toFixed(1)}mm`;
+
+        document.getElementById('valA').innerText = A.toFixed(1) + 'mm';
+        document.getElementById('valB').innerText = B.toFixed(1) + 'mm';
 
         const mat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, side: THREE.DoubleSide });
 
-        // 1. MAIN BODY PANELS
-        const front = new THREE.Mesh(new THREE.BoxGeometry(L, H, 0.5), mat);
-        boxGroup.add(front);
+        // 1. Static Body
+        const body = [
+            { g: [L, H, 1], p: [0, 0, 0] },          // Front
+            { g: [L, H, 1], p: [0, 0, -W] },         // Back
+            { g: [1, H, W], p: [-L/2, 0, -W/2] },    // Left
+            { g: [1, H, W], p: [L/2, 0, -W/2] },     // Right
+            { g: [L, 1, W], p: [0, -H/2, -W/2] }     // Bottom
+        ];
 
-        const back = new THREE.Mesh(new THREE.BoxGeometry(L, H, 0.5), mat);
-        back.position.z = -W;
-        boxGroup.add(back);
+        body.forEach(item => {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(...item.g), mat);
+            mesh.position.set(...item.p);
+            boxGroup.add(mesh);
+        });
 
-        const left = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, W), mat);
-        left.position.set(-L/2, 0, -W/2);
-        boxGroup.add(left);
-
-        const right = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, W), mat);
-        right.position.set(L/2, 0, -W/2);
-        boxGroup.add(right);
-
-        const bottom = new THREE.Mesh(new THREE.BoxGeometry(L, 0.5, W), mat);
-        bottom.position.set(0, -H/2, -W/2);
-        boxGroup.add(bottom);
-
-        // 2. HINGED LID
+        // 2. Hinged Lid (Attaches to Back Panel)
         const lidPivot = new THREE.Group();
-        lidPivot.position.set(0, H/2, -W); // Attach to top of back panel
+        lidPivot.position.set(0, H/2, -W);
         boxGroup.add(lidPivot);
 
-        const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(L, A, 0.5), mat);
-        lidMesh.position.y = A/2;
-        lidPivot.add(lidMesh);
-        lidPivot.rotation.x = fold; // Opening angle
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(L, A, 1), mat);
+        lid.position.y = A/2;
+        lidPivot.add(lid);
+        lidPivot.rotation.x = fold;
 
-        // 3. TUCK FLAP
+        // 3. Tuck Flap (Attaches to Lid)
         const tuckPivot = new THREE.Group();
         tuckPivot.position.y = A;
-        lidMesh.add(tuckPivot);
+        lid.add(tuckPivot);
 
-        const tuckMesh = new THREE.Mesh(new THREE.BoxGeometry(L, B, 0.5), mat);
-        tuckMesh.position.y = B/2;
-        tuckPivot.add(tuckMesh);
-        tuckPivot.rotation.x = Math.PI / 2; // Fixed 90 deg fold for tuck
+        const tuck = new THREE.Mesh(new THREE.BoxGeometry(L, B, 1), mat);
+        tuck.position.y = B/2;
+        tuckPivot.add(tuck);
+        tuckPivot.rotation.x = Math.PI / 2;
+
+        renderer.render(scene, camera);
     }
 
-    document.querySelectorAll('input, select').forEach(el => el.oninput = updateBox);
+    // --- INITIALIZE ---
+    document.querySelectorAll('input, select').forEach(el => el.oninput = update3D);
     syncData();
 
     function animate() {
@@ -520,148 +167,12 @@
         renderer.render(scene, camera);
     }
     animate();
-</script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-    <title>Pacdora-Style Viewer (GitHub Edition)</title>
-    <style>
-        body { margin: 0; background: #1a1a1a; font-family: sans-serif; color: white; display: flex; }
-        #sidebar { width: 320px; background: #222; padding: 20px; height: 100vh; border-right: 1px solid #444; }
-        #viewer { flex: 1; height: 100vh; }
-        .status { padding: 10px; border-radius: 4px; font-size: 12px; margin-bottom: 20px; text-align: center; }
-        .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
-        .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
-        input, select { width: 100%; margin: 10px 0; padding: 10px; background: #333; color: white; border: 1px solid #555; }
-        .log { background: #000; padding: 10px; font-family: monospace; font-size: 10px; color: #aaa; height: 100px; overflow-y: auto; margin-top: 20px; border: 1px solid #333; }
-    </style>
-</head>
-<body>
 
-<div id="sidebar">
-    <div id="status" class="status offline">OFFLINE: Connecting...</div>
-    
-    <label>Model ID</label>
-    <select id="modelSelector">
-        <option value="156430">156430 - Flip Top Mailer</option>
-        <option value="150010">150010 - Crash Lock</option>
-    </select>
-
-    <label>L, W, H (mm)</label>
-    <div style="display:flex; gap:5px;">
-        <input type="number" id="L" value="120">
-        <input type="number" id="W" value="60">
-        <input type="number" id="H" value="160">
-    </div>
-
-    <label>Fold Angle</label>
-    <input type="range" id="Fold" min="0" max="120" value="90">
-
-    <div class="log" id="consoleLog">System: Initializing...</div>
-</div>
-
-<div id="viewer"></div>
-
-<script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-
-    // YOUR ACTUAL GOOGLE SHEET CSV LINK
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
-    
-    let library = { "156430": { lidA: "W+1", tuckB: "20" } };
-
-    const logger = (msg) => {
-        const el = document.getElementById('consoleLog');
-        el.innerHTML += `<br>> ${msg}`;
-        el.scrollTop = el.scrollHeight;
-    };
-
-    // --- 3D SETUP ---
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    document.getElementById('viewer').appendChild(renderer.domElement);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    camera.position.set(200, 200, 300);
-    camera.lookAt(0,0,0);
-    const boxGroup = new THREE.Group();
-    scene.add(boxGroup);
-
-    async function loadData() {
-        logger("Attempting to fetch Google Sheet...");
-        try {
-            // Using a proxy to bypass potential GitHub -> Google blocks
-            const response = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(SHEET_URL));
-            const json = await response.json();
-            const csv = json.contents;
-
-            if (!csv || csv.includes("<!DOCTYPE html>")) {
-                throw new Error("Sheet not published as CSV correctly.");
-            }
-
-            const rows = csv.split('\n').map(r => r.split(','));
-            rows.forEach((row, i) => {
-                if(i > 0 && row[0]) {
-                    library[row[0].trim()] = { lidA: row[6], tuckB: row[7] };
-                }
-            });
-
-            document.getElementById('status').className = "status online";
-            document.getElementById('status').innerText = "ONLINE: SHEET SYNCED";
-            logger("Success! Data loaded.");
-        } catch (e) {
-            logger("Error: " + e.message);
-            document.getElementById('status').innerText = "OFFLINE: Check Console";
-        }
-        update();
-    }
-
-    function update() {
-        boxGroup.clear();
-        const id = document.getElementById('modelSelector').value;
-        const L = parseFloat(document.getElementById('L').value);
-        const W = parseFloat(document.getElementById('W').value);
-        const H = parseFloat(document.getElementById('H').value);
-        const fold = (document.getElementById('Fold').value * Math.PI) / 180;
-
-        const data = library[id] || library["156430"];
-        const solve = (f) => eval(f.replace(/W/g, W).replace(/L/g, L).replace(/H/g, H).replace(/=/g, ''));
-
-        // Draw Front
-        const frontGeo = new THREE.BoxGeometry(L, H, 1);
-        const mat = new THREE.MeshPhongMaterial({color: 0xd2b48c});
-        const front = new THREE.Mesh(frontGeo, mat);
-        boxGroup.add(front);
-
-        // Draw Hinged Lid
-        const lidA = solve(data.lidA);
-        const lidPivot = new THREE.Group();
-        lidPivot.position.y = H/2;
-        front.add(lidPivot);
-
-        const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(L, lidA, 1), mat);
-        lidMesh.position.y = lidA/2;
-        lidPivot.add(lidMesh);
-        lidPivot.rotation.x = -fold;
-
-        renderer.render(scene, camera);
-    }
-
-    document.querySelectorAll('input, select').forEach(i => i.oninput = update);
-    loadData();
-    
-    function animate() {
-        requestAnimationFrame(animate);
-        boxGroup.rotation.y += 0.005;
-        renderer.render(scene, camera);
-    }
-    animate();
+    window.addEventListener('resize', () => {
+        camera.aspect = (window.innerWidth - 320) / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth - 320, window.innerHeight);
+    });
 </script>
 </body>
 </html>
