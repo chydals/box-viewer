@@ -1,46 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Box Viewer Pro - SaaS Library</title>
+    <title>SaaS Box Viewer - Download Enabled</title>
     <style>
         body { margin: 0; background: #1a1a1a; font-family: 'Segoe UI', sans-serif; color: white; display: flex; overflow: hidden; }
-        #sidebar { width: 320px; background: #222; padding: 25px; height: 100vh; border-right: 1px solid #444; z-index: 10; overflow-y: auto; box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
+        #sidebar { width: 320px; background: #222; padding: 25px; height: 100vh; border-right: 1px solid #444; z-index: 10; overflow-y: auto; }
         #viewer { flex: 1; height: 100vh; cursor: grab; }
-        #viewer:active { cursor: grabbing; }
-        .status { padding: 12px; border-radius: 6px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .status { padding: 12px; border-radius: 6px; font-size: 11px; margin-bottom: 20px; text-align: center; font-weight: bold; text-transform: uppercase; }
         .online { background: #1b4332; color: #74c69d; border: 1px solid #2d6a4f; }
-        .offline { background: #432818; color: #ffb4a2; border: 1px solid #6f1d1b; }
         label { display: block; font-size: 11px; color: #888; margin-top: 15px; text-transform: uppercase; font-weight: bold; }
-        input, select { width: 100%; padding: 12px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; margin-top: 5px; box-sizing: border-box; outline: none; }
-        input:focus { border-color: #3498db; }
+        input, select { width: 100%; padding: 12px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; margin-top: 5px; box-sizing: border-box; }
+        .btn-group { margin-top: 25px; display: flex; flex-direction: column; gap: 10px; }
+        .download-btn { width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .download-btn:hover { background: #2980b9; }
+        .secondary-btn { background: #444; }
+        .secondary-btn:hover { background: #555; }
         .debug-panel { background: #111; padding: 15px; margin-top: 25px; border-radius: 5px; border-left: 4px solid #3498db; font-family: monospace; font-size: 13px; }
-        .val { color: #3498db; float: right; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <div id="status" class="status offline">Initializing...</div>
+    <div id="status" class="status online">SYSTEM ACTIVE</div>
     
-    <label>Box Style Template</label>
+    <label>Box Style</label>
     <select id="modelSelector">
         <option value="156430">156430 - Flip Top Mailer</option>
-        <option value="150010">150010 - Crash Lock Box</option>
     </select>
 
     <label>Dimensions (L, W, H)</label>
     <div style="display:flex; gap:8px;">
-        <input type="number" id="L" value="120" title="Length">
-        <input type="number" id="W" value="60" title="Width">
-        <input type="number" id="H" value="160" title="Height">
+        <input type="number" id="L" value="120">
+        <input type="number" id="W" value="60">
+        <input type="number" id="H" value="160">
     </div>
 
-    <label>Fold Simulation (Angle)</label>
+    <label>Fold View</label>
     <input type="range" id="Fold" min="0" max="160" value="90">
 
+    <div class="btn-group">
+        <button class="download-btn" onclick="downloadImage()">📸 Download 3D View</button>
+        <button class="download-btn secondary-btn" onclick="downloadSpecs()">📄 Export Specs (CSV)</button>
+    </div>
+
     <div class="debug-panel">
-        <div>Lid (A): <span id="valA" class="val">--</span></div>
-        <div style="margin-top:8px;">Tuck (B): <span id="valB" class="val">--</span></div>
+        <div>Lid (A): <span id="valA" style="color:#3498db; float:right;">--</span></div>
+        <div style="margin-top:8px;">Tuck (B): <span id="valB" style="color:#3498db; float:right;">--</span></div>
     </div>
 </div>
 
@@ -59,62 +64,38 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    // Update with your specific published CSV link
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWnGV2wI7Lxo1m8ZKl5V4r1shXGpvYt9t-fxjQrdocHS5dJ3URgDjT5ytKMNmlIjrrEFFFIfPT1Voq/pub?gid=783217424&single=true&output=csv';
     
-    let library = { 
-        "156430": { lidA: "W+1", tuckB: "20" } 
-    };
+    let library = { "156430": { lidA: "W+1", tuckB: "20" } };
 
-    // --- 1. ENGINE SETUP ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a1a);
-    
     const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 1, 2000);
     camera.position.set(300, 300, 450);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('viewer').appendChild(renderer.domElement);
 
-    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-    sun.position.set(100, 200, 100);
-    scene.add(sun);
-
     const boxGroup = new THREE.Group();
     scene.add(boxGroup);
 
-    // --- 2. FORMULA SOLVER ---
     function solve(formula, L, W, H) {
         if(!formula) return 0;
-        try {
-            // Clean text from Sheet and replace variables
-            let mathStr = formula.toString()
-                .replace(/W/g, W)
-                .replace(/L/g, L)
-                .replace(/H/g, H);
-            return eval(mathStr);
-        } catch(e) { return 0; }
+        try { return eval(formula.toString().replace(/W/g, W).replace(/L/g, L).replace(/H/g, H)); }
+        catch(e) { return 0; }
     }
 
-    // --- 3. CORE DRAWING FUNCTION ---
     function update3D() {
         boxGroup.clear();
-
-        const id = document.getElementById('modelSelector').value;
         const L = parseFloat(document.getElementById('L').value) || 120;
         const W = parseFloat(document.getElementById('W').value) || 60;
         const H = parseFloat(document.getElementById('H').value) || 160;
         const fold = (document.getElementById('Fold').value * Math.PI) / 180;
 
-        const data = library[id] || library["156430"];
+        const data = library[document.getElementById('modelSelector').value] || library["156430"];
         const A = solve(data.lidA, L, W, H);
         const B = solve(data.tuckB, L, W, H);
 
@@ -122,83 +103,64 @@
         document.getElementById('valB').innerText = B.toFixed(1) + 'mm';
 
         const mat = new THREE.MeshPhongMaterial({ color: 0xd2b48c, side: THREE.DoubleSide });
-
-        // Body Panels
-        const panels = [
-            { g: [L, H, 1], p: [0, 0, 0] },          // Front
-            { g: [L, H, 1], p: [0, 0, -W] },         // Back
-            { g: [1, H, W], p: [-L/2, 0, -W/2] },    // Side L
-            { g: [1, H, W], p: [L/2, 0, -W/2] },     // Side R
-            { g: [L, 1, W], p: [0, -H/2, -W/2] }     // Bottom
-        ];
-
-        panels.forEach(p => {
+        
+        // Body
+        [
+            {g:[L,H,1], p:[0,0,0]}, {g:[L,H,1], p:[0,0,-W]}, 
+            {g:[1,H,W], p:[-L/2,0,-W/2]}, {g:[1,H,W], p:[L/2,0,-W/2]},
+            {g:[L,1,W], p:[0,-H/2,-W/2]}
+        ].forEach(p => {
             const m = new THREE.Mesh(new THREE.BoxGeometry(...p.g), mat);
             m.position.set(...p.p);
             boxGroup.add(m);
         });
 
-        // Hinged Lid (Hinged at top of BACK panel)
-        const lidPivot = new THREE.Group();
-        lidPivot.position.set(0, H/2, -W);
-        boxGroup.add(lidPivot);
-
-        const lid = new THREE.Mesh(new THREE.BoxGeometry(L, A, 1), mat);
-        lid.position.y = A/2;
-        lidPivot.add(lid);
-        lidPivot.rotation.x = fold;
-
-        // Tuck Flap (Hinged at top of LID)
-        const tuckPivot = new THREE.Group();
-        tuckPivot.position.y = A;
-        lid.add(tuckPivot);
-
-        const tuck = new THREE.Mesh(new THREE.BoxGeometry(L, B, 1), mat);
-        tuck.position.y = B/2;
-        tuckPivot.add(tuck);
-        tuckPivot.rotation.x = Math.PI/2; 
+        // Lid & Tuck
+        const lp = new THREE.Group(); lp.position.set(0, H/2, -W); boxGroup.add(lp);
+        const l = new THREE.Mesh(new THREE.BoxGeometry(L, A, 1), mat); l.position.y = A/2; lp.add(l); lp.rotation.x = fold;
+        const tp = new THREE.Group(); tp.position.y = A; l.add(tp);
+        const t = new THREE.Mesh(new THREE.BoxGeometry(L, B, 1), mat); t.position.y = B/2; tp.add(t); tp.rotation.x = Math.PI/2;
     }
 
-    // --- 4. SHEET SYNC ---
-    async function syncData() {
+    async function sync() {
         try {
             const res = await fetch(`${SHEET_URL}&t=${Date.now()}`);
-            const text = await res.text();
-            const rows = text.split('\n').map(r => r.split(',').map(c => c.trim()));
-            
-            rows.forEach((row, i) => {
-                if(i > 0 && row[0]) {
-                    library[row[0]] = { lidA: row[5], tuckB: row[6] };
-                }
+            const csv = await res.text();
+            csv.split('\n').forEach((row, i) => {
+                const c = row.split(',');
+                if(i > 0 && c[0]) library[c[0]] = { lidA: c[5], tuckB: c[6] };
             });
-            document.getElementById('status').className = "status online";
-            document.getElementById('status').innerText = "Online: Synced";
-        } catch (e) {
-            document.getElementById('status').className = "status offline";
-            document.getElementById('status').innerText = "Sync Error";
-        }
+        } catch (e) {}
         update3D();
     }
 
-    // --- 5. INITIALIZE ---
-    document.querySelectorAll('input, select').forEach(el => {
-        el.addEventListener('input', update3D);
-    });
+    // Global functions for buttons
+    window.downloadImage = () => {
+        const link = document.createElement('a');
+        link.download = 'box-view.png';
+        link.href = renderer.domElement.toDataURL('image/png');
+        link.click();
+    };
 
-    syncData();
+    window.downloadSpecs = () => {
+        const L = document.getElementById('L').value;
+        const W = document.getElementById('W').value;
+        const H = document.getElementById('H').value;
+        const A = document.getElementById('valA').innerText;
+        const B = document.getElementById('valB').innerText;
+        const csvContent = "data:text/csv;charset=utf-8,Parameter,Value\nLength," + L + "\nWidth," + W + "\nHeight," + H + "\nLid(A)," + A + "\nTuck(B)," + B;
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "box_specifications.csv");
+        document.body.appendChild(link);
+        link.click();
+    };
 
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    }
+    document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', update3D));
+    sync();
+    function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
     animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = (window.innerWidth - 320) / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth - 320, window.innerHeight);
-    });
 </script>
 </body>
 </html>
